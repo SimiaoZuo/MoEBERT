@@ -27,8 +27,9 @@ Path to the fine-tuned model should be passed to `--model_name_or_path`.
 * To use the pre-computed importance scores, pass the file name to `--moebert_load_importance`.
 
 ### Knowledge Distillation
+* For GLUE tasks, see `examples/text-classification/run_glue.py`.
+* For question answering tasks, see `examples/question-answering/run_qa.py`.
 * Run `bash bert_base_mnli_example.sh` as an example.
-
 * The codebase supports three routing strategies: *gate*, *hash-random* and *hash-balance*. 
   Choices should be passed to `--moebert_route_method`.
   * To use *hash-balance*, a balanced hash list needs to be pre-computed using `hash_balance.py`. 
