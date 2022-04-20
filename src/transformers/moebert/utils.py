@@ -27,8 +27,6 @@ def process_ffn(model):
 
 
 class ImportanceProcessor:
-    GROUP_RANDOM_SATE = 10000  # for expert initialization
-
     def __init__(self, config, layer_idx, num_local_experts, local_group_rank):
         self.num_experts = config.moebert_expert_num  # total number of experts
         self.num_local_experts = num_local_experts  # number of experts on this device
@@ -37,7 +35,6 @@ class ImportanceProcessor:
         self.share_importance = config.moebert_share_importance  # number of shared FFN dimension
 
         importance = ImportanceProcessor.load_importance_single(config.moebert_load_importance)[layer_idx, :]
-        # importance = np.random.permutation(self.intermediate_size * self.num_experts)
         self.importance = self._split_importance(importance)
 
         self.is_moe = False  # safety check
@@ -49,21 +46,17 @@ class ImportanceProcessor:
             data = data["idx"]
         return np.array(data)
 
-    def _split_importance(self, arr, random_selection=False):
+    def _split_importance(self, arr):
         result = []
         top_importance = arr[:self.share_importance]
         remain = arr[self.share_importance:]
         all_experts_remain = []
         for i in range(self.num_experts):
             all_experts_remain.append(remain[i::self.num_experts])
-            # all_experts_remain.append(remain[i * self.num_experts:(i + 1) * self.num_experts])
         all_experts_remain = np.array(all_experts_remain)
 
         for i in range(self.num_local_experts):
-            if random_selection:
-                temp = np.random.RandomState(self.GROUP_RANDOM_SATE * self.local_group_rank + i).permutation(remain)
-            else:
-                temp = all_experts_remain[self.num_local_experts * self.local_group_rank + i]
+            temp = all_experts_remain[self.num_local_experts * self.local_group_rank + i]
             temp = np.concatenate((top_importance, temp))
             temp = temp[:self.intermediate_size]
             result.append(temp.copy())
