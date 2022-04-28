@@ -26,7 +26,6 @@ from ...moebert.utils import (
 from ...moebert.moe_layer import MoELayer
 from ...utils import logging
 
-
 logger = logging.get_logger(__name__)
 
 
@@ -73,15 +72,16 @@ class MoEBertLayer(BertLayer):
             self.experts = FeedForward(config, config.intermediate_size, dropout)
 
     def forward(
-        self,
-        hidden_states,
-        attention_mask=None,
-        head_mask=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-        past_key_value=None,
-        output_attentions=False,
-        expert_input_ids=None,
+            self,
+            hidden_states,
+            attention_mask=None,
+            head_mask=None,
+            encoder_hidden_states=None,
+            encoder_attention_mask=None,
+            past_key_value=None,
+            output_attentions=False,
+            expert_input_ids=None,
+            expert_attention_mask=None,
     ):
         # decoder uni-directional self-attention cached key/values tuple is at positions 1,2
         self_attn_past_key_value = past_key_value[:2] if past_key_value is not None else None
@@ -125,7 +125,7 @@ class MoEBertLayer(BertLayer):
             cross_attn_present_key_value = cross_attention_outputs[-1]
             present_key_value = present_key_value + cross_attn_present_key_value
 
-        layer_output = self.feed_forward(attention_output, expert_input_ids)
+        layer_output = self.feed_forward(attention_output, expert_input_ids, expert_attention_mask)
         outputs = (layer_output,) + outputs
 
         # if decoder, return the attn key/values as the last output
@@ -134,7 +134,7 @@ class MoEBertLayer(BertLayer):
 
         return outputs
 
-    def feed_forward(self, attention_output, expert_input_ids):
+    def feed_forward(self, attention_output, expert_input_ids, expert_attention_mask):
         if not self.use_experts:
             layer_output = self.experts(attention_output)
             return layer_output, 0.0
@@ -142,7 +142,9 @@ class MoEBertLayer(BertLayer):
         if not self.importance_processor.is_moe:
             raise RuntimeError("Need to turn the model to a MoE first.")
 
-        layer_output, gate_loss, gate_load = self.experts(attention_output, expert_input_ids)
+        layer_output, gate_loss, gate_load = self.experts(
+            attention_output, expert_input_ids, expert_attention_mask
+        )
         return layer_output, gate_loss
 
 
@@ -153,18 +155,19 @@ class MoEBertEncoder(BertEncoder):
         self.layer = nn.ModuleList([MoEBertLayer(config, i) for i in range(config.num_hidden_layers)])
 
     def forward(
-        self,
-        hidden_states,
-        attention_mask=None,
-        head_mask=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-        past_key_values=None,
-        use_cache=None,
-        output_attentions=False,
-        output_hidden_states=False,
-        return_dict=True,
-        expert_input_ids=None,
+            self,
+            hidden_states,
+            attention_mask=None,
+            head_mask=None,
+            encoder_hidden_states=None,
+            encoder_attention_mask=None,
+            past_key_values=None,
+            use_cache=None,
+            output_attentions=False,
+            output_hidden_states=False,
+            return_dict=True,
+            expert_input_ids=None,
+            expert_attention_mask=None,
     ):
         all_hidden_states = () if output_hidden_states else None
         all_self_attentions = () if output_attentions else None
@@ -212,6 +215,7 @@ class MoEBertEncoder(BertEncoder):
                     past_key_value,
                     output_attentions,
                     expert_input_ids,
+                    expert_attention_mask,
                 )
 
             hidden_states = layer_outputs[0][0]
@@ -261,21 +265,22 @@ class MoEBertModel(BertModel):
         self.init_weights()
 
     def forward(
-        self,
-        input_ids=None,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-        past_key_values=None,
-        use_cache=None,
-        output_attentions=None,
-        output_hidden_states=None,
-        return_dict=None,
-        expert_input_ids=None,
+            self,
+            input_ids=None,
+            attention_mask=None,
+            token_type_ids=None,
+            position_ids=None,
+            head_mask=None,
+            inputs_embeds=None,
+            encoder_hidden_states=None,
+            encoder_attention_mask=None,
+            past_key_values=None,
+            use_cache=None,
+            output_attentions=None,
+            output_hidden_states=None,
+            return_dict=None,
+            expert_input_ids=None,
+            expert_attention_mask=None,
     ):
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -350,6 +355,7 @@ class MoEBertModel(BertModel):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             expert_input_ids=expert_input_ids,
+            expert_attention_mask=expert_attention_mask,
         )
         sequence_output = encoder_outputs[0]
         pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
@@ -385,18 +391,19 @@ class MoEBertForSequenceClassification(BertPreTrainedModel):
         self.init_weights()
 
     def forward_clean(
-        self,
-        input_ids=None,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        labels=None,
-        output_attentions=None,
-        output_hidden_states=None,
-        return_dict=None,
-        expert_input_ids=None,
+            self,
+            input_ids=None,
+            attention_mask=None,
+            token_type_ids=None,
+            position_ids=None,
+            head_mask=None,
+            inputs_embeds=None,
+            labels=None,
+            output_attentions=None,
+            output_hidden_states=None,
+            return_dict=None,
+            expert_input_ids=None,
+            expert_attention_mask=None,
     ):
         outputs = self.bert(
             input_ids,
@@ -409,6 +416,7 @@ class MoEBertForSequenceClassification(BertPreTrainedModel):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             expert_input_ids=expert_input_ids,
+            expert_attention_mask=expert_attention_mask,
         )
         gate_loss = outputs.gate_loss
         pooled_output = outputs[1]
@@ -426,17 +434,17 @@ class MoEBertForSequenceClassification(BertPreTrainedModel):
         return outputs, logits, loss, gate_loss
 
     def forward(
-        self,
-        input_ids=None,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        labels=None,
-        output_attentions=None,
-        output_hidden_states=None,
-        return_dict=None,
+            self,
+            input_ids=None,
+            attention_mask=None,
+            token_type_ids=None,
+            position_ids=None,
+            head_mask=None,
+            inputs_embeds=None,
+            labels=None,
+            output_attentions=None,
+            output_hidden_states=None,
+            return_dict=None,
     ):
         r"""
         labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`):
@@ -460,6 +468,7 @@ class MoEBertForSequenceClassification(BertPreTrainedModel):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             expert_input_ids=input_ids,
+            expert_attention_mask=attention_mask,
         )
 
         distillation_loss = 0.0
@@ -530,19 +539,20 @@ class MoEBertForQuestionAnswering(BertPreTrainedModel):
         self.init_weights()
 
     def forward_clean(
-        self,
-        input_ids,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        output_attentions=None,
-        output_hidden_states=None,
-        return_dict=None,
-        start_positions=None,
-        end_positions=None,
-        expert_input_ids=None,
+            self,
+            input_ids,
+            attention_mask=None,
+            token_type_ids=None,
+            position_ids=None,
+            head_mask=None,
+            inputs_embeds=None,
+            output_attentions=None,
+            output_hidden_states=None,
+            return_dict=None,
+            start_positions=None,
+            end_positions=None,
+            expert_input_ids=None,
+            expert_attention_mask=None,
     ):
         outputs = self.bert(
             input_ids,
@@ -555,6 +565,7 @@ class MoEBertForQuestionAnswering(BertPreTrainedModel):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             expert_input_ids=expert_input_ids,
+            expert_attention_mask=expert_attention_mask,
         )
         gate_loss = outputs.gate_loss
 
@@ -584,18 +595,18 @@ class MoEBertForQuestionAnswering(BertPreTrainedModel):
         return outputs, start_logits, end_logits, total_loss, gate_loss
 
     def forward(
-        self,
-        input_ids=None,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        start_positions=None,
-        end_positions=None,
-        output_attentions=None,
-        output_hidden_states=None,
-        return_dict=None,
+            self,
+            input_ids=None,
+            attention_mask=None,
+            token_type_ids=None,
+            position_ids=None,
+            head_mask=None,
+            inputs_embeds=None,
+            start_positions=None,
+            end_positions=None,
+            output_attentions=None,
+            output_hidden_states=None,
+            return_dict=None,
     ):
         r"""
         start_positions (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`):
@@ -624,6 +635,7 @@ class MoEBertForQuestionAnswering(BertPreTrainedModel):
             start_positions=start_positions,
             end_positions=end_positions,
             expert_input_ids=input_ids,
+            expert_attention_mask=attention_mask,
         )
 
         distillation_loss = 0.0
@@ -642,7 +654,6 @@ class MoEBertForQuestionAnswering(BertPreTrainedModel):
                 return_dict=return_dict,
             )
             distillation_loss = self.get_distillation_loss(outputs, start_logits, end_logits, teacher_outputs)
-
 
         if total_loss is not None:
             total_loss = total_loss \

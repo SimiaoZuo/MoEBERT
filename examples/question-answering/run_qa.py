@@ -123,8 +123,8 @@ class ModelArguments:
         metadata={"help": "Path to the saved hash list."}
     )
     moebert_route_method: Optional[str] = field(
-        default="gate",
-        metadata={"help": "Method to route tokens. Choose from gate, hash-random and hash-balance."},
+        default="hash-random",
+        metadata={"help": "Choose from gate-token, gate-sentence, hash-random and hash-balance."},
     )
     moebert_share_importance: Optional[int] = field(
         default=512,
