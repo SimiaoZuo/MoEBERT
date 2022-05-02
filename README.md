@@ -19,7 +19,6 @@ MoEBERT targets task-specific distillation. Before running any distillation code
 Path to the fine-tuned model should be passed to `--model_name_or_path`.
 
 ### Importance Score Computation
-* *Note:* Pre-computed importance scores are included in `importance_files/`.
 * Use `bert_base_mnli_example.sh` to compute the importance scores, 
   add a `--preprocess_importance` argument, remove the `--do_train` argument.
 * If multiple GPUs are used to compute the importance scores, a `importance_[rank].pkl` file will be saved for each GPU. 
